@@ -1,0 +1,42 @@
+#!/bin/bash
+set -u
+
+broadcast_addr() {
+  local IP="$1"
+  local NUM="${IP//*\/}"
+  echo "${IP%%/*}" |
+  perl -F'[.]' -e 'printf("%08b", $_) for @F' |
+  (
+    read -r s
+    printf "%s" "${s:0:$NUM}"
+    printf "%$((32 - NUM))s\n" | tr ' ' 1
+  ) |
+  fold -w 8 |
+  perl -nle 'print unpack("C", pack("B*",$_))' |
+  paste -sd .
+}
+
+main () {
+  local IP="$1"
+  local NUM="${IP//*\/}"
+  local n=0 marked
+  marked=$(
+    for i in $(broadcast_addr "$IP" | tr . ' ')
+    do
+      if (( n++ >= NUM/8 && i != 255 ))
+      then
+        eval echo "{0..$i}" | tr ' ' ,
+      else
+        echo "$i"
+      fi
+    done | sed '/,/s/.*/{&}/' | paste -sd .
+  )
+  eval echo "$marked" |
+    fmt -1 |
+    awk '{
+      n=gsub("255","0")
+      print $0"/"(4-n)*8
+    }'
+}
+
+main ${1+"$@"}
