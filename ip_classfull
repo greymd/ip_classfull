@@ -1,31 +1,50 @@
 #!/bin/bash
 set -u
 
+minimum_addr() {
+  set_host_bit "$1" 0
+}
+
 broadcast_addr() {
+  set_host_bit "$1" 1
+}
+
+set_host_bit() {
   local IP="$1"
   local NUM="${IP//*\/}"
   echo "${IP%%/*}" |
-  perl -F'[.]' -e 'printf("%08b", $_) for @F' |
+  perl -F'[.]' -anle 'printf("%08b", $_) for @F' |
   (
     read -r s
     printf "%s" "${s:0:$NUM}"
-    printf "%$((32 - NUM))s\n" | tr ' ' 1
+    printf "%$((32 - NUM))s\n" | tr ' ' "$2"
   ) |
   fold -w 8 |
   perl -nle 'print unpack("C", pack("B*",$_))' |
   paste -sd .
 }
 
+usage () {
+  echo "Usage: $0 <IP ADDRESS>/<PREFIX>"
+  echo "Example: $0 10.0.0.0/23"
+}
+
 main () {
+  if (( $# != 1 )) || ( grep -qvE '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$' <<<"$1" )
+  then
+    usage
+    exit 1
+  fi
   local IP="$1"
   local NUM="${IP//*\/}"
   local n=0 marked
+  IFS="." read -r -a minimum_addr_cols <<<"$(minimum_addr "$IP")"
   marked=$(
     for i in $(broadcast_addr "$IP" | tr . ' ')
     do
       if (( n++ >= NUM/8 && i != 255 ))
       then
-        eval echo "{0..$i}" | tr ' ' ,
+        eval echo "{${minimum_addr_cols[n-1]}..$i}" | tr ' ' ,
       else
         echo "$i"
       fi
